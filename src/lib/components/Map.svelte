@@ -5,11 +5,12 @@
 	import { m } from '$lib/state.svelte';
 	import { onMount, untrack } from 'svelte';
 
-	const { radiusMiles, onNearbyUsersUpdate = () => {}, centerCoordinates = null } = $props();
+	const { diameterMiles, onNearbyUsersUpdate = () => {}, centerCoordinates = null } = $props();
+	let radiusMiles = $derived(diameterMiles / 2);
 
 	let mapContainer = $state<HTMLElement | null>(null);
 	let mapInstance = $state<maplibreGl.Map | null>(null);
-	let circleCenter = $state(radiusMiles);
+	let circleCenter = $state(diameterMiles / 2);
 	const radiusGeoJSONSourceId = 'radius-circle-source'; // Renamed for clarity
 	const radiusFillLayerId = 'radius-circle-fill-layer';
 	const radiusOutlineLayerId = 'radius-circle-outline-layer';
@@ -123,7 +124,7 @@
 
 	$effect(() => {
 		if (mapInstance && circleCenter) {
-			updateMapCenterAndRadius(circleCenter, radiusMiles);
+			updateMapCenterAndRadius(circleCenter, radiusMiles); // radiusMiles is now derived
 		}
 	});
 

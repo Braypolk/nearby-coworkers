@@ -138,7 +138,7 @@
 		<div class="flex justify-between">
 			<ToggleGroup.Root bind:value={currentTab} type="single" class="grow">
 				<ToggleGroup.Item value="emp-rad" aria-label="Toggle emp-rad" class="grow">
-					Employees within Radius
+					Employees within Circle
 				</ToggleGroup.Item>
 				<ToggleGroup.Item value="emp-all" aria-label="Toggle emp-all" class="grow">
 					All Employees
@@ -147,11 +147,11 @@
 			<LightSwitch />
 		</div>
 	</Sidebar.Header>
-
+	<Sidebar.Separator class="bg-primary/60" />
 	<Sidebar.Content>
 		<Sidebar.Group class="group-data-[collapsible=icon]:hidden">
 			{#if currentTab === 'emp-rad'}
-				<Sidebar.GroupLabel>Employees within radius: ({nearbyUsers.length})</Sidebar.GroupLabel>
+				<Sidebar.GroupLabel>Employees within Circle: ({nearbyUsers.length})</Sidebar.GroupLabel>
 				<Sidebar.Menu>
 					{@render menuButton(nearbyUsers)}
 				</Sidebar.Menu>

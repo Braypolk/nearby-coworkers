@@ -13,7 +13,7 @@
 	// todo:
 	// import csv of user locations
 
-	let radiusMiles: number = $state(3); // Default to 3 miles (approx 5 km)
+	let diameterMiles: number = $state(6); // Default to 6 miles, so radius is 3 miles (approx 5 km)
 	let nearbyUsers: User[] = $state([]);
 	let mapComponent: Map; // To call exported functions if needed, e.g. for an initial explicit update
 	let searchedCoordinates: { lat: number; lng: number } | null = $state(null);
@@ -87,12 +87,12 @@
 				</div>
 
 				<div class="w-36 flex">
-					<Label for="radius-input">Radius (miles)</Label>
+					<Label for="diameter-input">Diameter (miles)</Label>
 					<Input
-						id="radius-input"
+						id="diameter-input"
 						type="number"
 						min={1}
-						bind:value={radiusMiles}
+						bind:value={diameterMiles}
 						class="w-20 py-0 h-7"
 					/>
 				</div>
@@ -100,7 +100,7 @@
 		</header>
 		<Map
 			bind:this={mapComponent}
-			{radiusMiles}
+			{diameterMiles}
 			onNearbyUsersUpdate={handleNearbyUsersUpdate}
 			centerCoordinates={searchedCoordinates}
 		/>
