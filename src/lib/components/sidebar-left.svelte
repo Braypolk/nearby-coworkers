@@ -74,6 +74,7 @@
 			const text = await file.text();
 			const rows = text.split('\n').filter((row) => row.trim() !== '');
 			const headers = rows[0].split(',').map((h) => h.trim().toLowerCase());
+			let nextId = 1;
 
 			m.users = rows.slice(1).map((row) => {
 				const values = row.split(',');
@@ -91,7 +92,14 @@
 				// Convert numeric fields
 				if (entry.lat) entry.lat = parseFloat(entry.lat);
 				if (entry.lng) entry.lng = parseFloat(entry.lng);
-				if (entry.id) entry.id = parseInt(entry.id);
+
+				// Assign or validate ID
+				const parsedId = parseInt(entry.id);
+				if (entry.id && !isNaN(parsedId)) {
+					entry.id = parsedId;
+				} else {
+					entry.id = nextId++;
+				}
 
 				return entry;
 			});
