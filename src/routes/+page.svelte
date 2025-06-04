@@ -10,10 +10,7 @@
 	import type { User } from '$lib/types';
 	import { m } from '$lib/state.svelte';
 
-	// todo:
-	// import csv of user locations
-
-	let diameterMiles: number = $state(6); // Default to 6 miles, so radius is 3 miles (approx 5 km)
+	let diameterMiles: number = $state(10); // Default to 6 miles, so radius is 3 miles (approx 5 km)
 	let nearbyUsers: User[] = $state([]);
 	let mapComponent: Map; // To call exported functions if needed, e.g. for an initial explicit update
 	let searchedCoordinates: { lat: number; lng: number } | null = $state(null);
@@ -37,7 +34,6 @@
 			if (data && data.length > 0) {
 				const { lat, lon } = data[0];
 				searchedCoordinates = { lat: parseFloat(lat), lng: parseFloat(lon) };
-				console.log('Searched coordinates:', searchedCoordinates);
 			} else {
 				alert('Address not found.');
 				searchedCoordinates = null;

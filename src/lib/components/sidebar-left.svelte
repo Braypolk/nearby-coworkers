@@ -7,16 +7,18 @@
 	import * as ToggleGroup from '$lib/components/ui/toggle-group/index.js';
 	import { m } from '$lib/state.svelte';
 	import type { User } from '$lib/types';
+	import Papa from 'papaparse';
 
 	const SESSION_STORAGE_KEY = 'cachedUsers';
 
-	let {
+	let { 
 		ref = $bindable(null),
 		nearbyUsers = [],
 		...restProps
 	}: ComponentProps<typeof Sidebar.Root> = $props();
 
 	let currentTab = $state('emp-all');
+	let searchTerm = $state('');
 
 	// Load users from session storage on component initialization
 	$effect.pre(() => {
@@ -40,6 +42,7 @@
 		});
 
 		m.userMarkers[id - 1].marker.togglePopup();
+		m.circleCenter = m.userMarkers[id - 1].marker.getLngLat().toArray();
 	}
 
 	function exportCSV() {
@@ -65,47 +68,57 @@
 		URL.revokeObjectURL(url);
 	}
 
+	const filteredAllUsers = $derived(
+		m.users.filter(user =>
+			user.name.toLowerCase().includes(searchTerm.toLowerCase())
+		)
+	);
+
+	const filteredNearbyUsers = $derived(
+		nearbyUsers.filter(user =>
+			user.name.toLowerCase().includes(searchTerm.toLowerCase())
+		)
+	);
+
 	async function handleFileUpload(event: Event) {
 		const input = event.target as HTMLInputElement;
 		if (!input.files?.length) return;
 
 		const file = input.files[0];
 		try {
-			const text = await file.text();
-			const rows = text.split('\n').filter((row) => row.trim() !== '');
-			const headers = rows[0].split(',').map((h) => h.trim().toLowerCase());
-			let nextId = 1;
+			Papa.parse(file, {
+				header: true,
+				skipEmptyLines: true,
+				complete: function (results) {
+					let nextId = 1;
+					m.users = results.data.map((row: any) => {
+						const entry: any = {};
+						// Normalize headers to lowercase and map latitude/longitude
+						for (const key in row) {
+							const lowerKey = key.toLowerCase();
+							const normalizedHeader =
+								lowerKey === 'latitude' ? 'lat' : lowerKey === 'longitude' ? 'lng' : lowerKey;
+							entry[normalizedHeader] = row[key].trim();
+						}
 
-			m.users = rows.slice(1).map((row) => {
-				const values = row.split(',');
-				const entry: any = {};
+						// Convert numeric fields
+						if (entry.lat) entry.lat = parseFloat(entry.lat);
+						if (entry.lng) entry.lng = parseFloat(entry.lng);
 
-				headers.forEach((header, index) => {
-					if (values[index]) {
-						// Map latitude/longitude to lat/lng
-						const normalizedHeader =
-							header === 'latitude' ? 'lat' : header === 'longitude' ? 'lng' : header;
-						entry[normalizedHeader] = values[index].trim();
-					}
-				});
+						// Assign or validate ID
+						const parsedId = parseInt(entry.id);
+						if (entry.id && !isNaN(parsedId)) {
+							entry.id = parsedId;
+						} else {
+							entry.id = nextId++;
+						}
+						return entry as User;
+					});
 
-				// Convert numeric fields
-				if (entry.lat) entry.lat = parseFloat(entry.lat);
-				if (entry.lng) entry.lng = parseFloat(entry.lng);
-
-				// Assign or validate ID
-				const parsedId = parseInt(entry.id);
-				if (entry.id && !isNaN(parsedId)) {
-					entry.id = parsedId;
-				} else {
-					entry.id = nextId++;
+					// Cache the users in session storage
+					sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(m.users));
 				}
-
-				return entry;
 			});
-
-			// Cache the users in session storage
-			sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(m.users));
 		} catch (error) {
 			console.error('Error parsing CSV:', error);
 		}
@@ -135,10 +148,10 @@
 
 <Sidebar.Root class="border-r-0" {...restProps}>
 	<Sidebar.Header>
-		<div class="flex justify-between">
+		<div class="flex justify-between gap-1">
 			<ToggleGroup.Root bind:value={currentTab} type="single" class="grow">
 				<ToggleGroup.Item value="emp-rad" aria-label="Toggle emp-rad" class="grow">
-					Employees within Circle
+					Employees in Circle
 				</ToggleGroup.Item>
 				<ToggleGroup.Item value="emp-all" aria-label="Toggle emp-all" class="grow">
 					All Employees
@@ -149,16 +162,19 @@
 	</Sidebar.Header>
 	<Sidebar.Separator class="bg-primary/60" />
 	<Sidebar.Content>
+		<div class="px-4 mt-2">
+			<Input type="search" placeholder="Search employees..." bind:value={searchTerm} class="w-full" />
+		</div>
 		<Sidebar.Group class="group-data-[collapsible=icon]:hidden">
 			{#if currentTab === 'emp-rad'}
-				<Sidebar.GroupLabel>Employees within Circle: ({nearbyUsers.length})</Sidebar.GroupLabel>
+				<Sidebar.GroupLabel>Employees within Circle: ({filteredNearbyUsers.length})</Sidebar.GroupLabel>
 				<Sidebar.Menu>
-					{@render menuButton(nearbyUsers)}
+					{@render menuButton(filteredNearbyUsers)}
 				</Sidebar.Menu>
 			{:else}
-				<Sidebar.GroupLabel>Number of Employees: ({m.users.length})</Sidebar.GroupLabel>
+				<Sidebar.GroupLabel>Number of Employees: ({filteredAllUsers.length})</Sidebar.GroupLabel>
 				<Sidebar.Menu>
-					{@render menuButton(m.users)}
+					{@render menuButton(filteredAllUsers)}
 				</Sidebar.Menu>
 			{/if}
 		</Sidebar.Group>
@@ -167,8 +183,11 @@
 		{#if currentTab === 'emp-rad'}
 			<Button onclick={exportCSV}>Export</Button>
 		{:else}
-			<Input id="file" type="file" onchange={handleFileUpload} accept=".csv" />
+			<Input class="bg-primary file:text-primary-foreground text-primary-foreground" id="file" type="file" onchange={handleFileUpload} accept=".csv" />
 		{/if}
 	</Sidebar.Footer>
 	<Sidebar.Rail />
+	<div class="absolute -right-2 top-1/2 -translate-y-1/2 h-24 w-3 bg-background rounded-full cursor-pointer flex items-center justify-center">
+		<div class="h-8 w-0.5 bg-gray-400 rounded-full"></div>
+	</div>
 </Sidebar.Root>

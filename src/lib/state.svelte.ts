@@ -4,9 +4,10 @@ import maplibreGl from 'maplibre-gl';
 interface M {
 	users: User[];
 	userMarkers: { user: User; marker: maplibreGl.Marker }[];
+	circleCenter: [number, number];
 }
 
-export const m = $state<M>({ users: [], userMarkers: [] })
+export const m = $state<M>({ users: [], userMarkers: [], circleCenter: [-75.272781, 40.147809] })
 
 // Array.from({ length: 100 }, (_, i) => ({
 // 	id: i + 1,

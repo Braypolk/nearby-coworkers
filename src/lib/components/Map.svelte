@@ -4,13 +4,14 @@
 	import type { User } from '$lib/types';
 	import { m } from '$lib/state.svelte';
 	import { onMount, untrack } from 'svelte';
+	import Button from './ui/button/button.svelte';
 
 	const { diameterMiles, onNearbyUsersUpdate = () => {}, centerCoordinates = null } = $props();
 	let radiusMiles = $derived(diameterMiles / 2);
 
 	let mapContainer = $state<HTMLElement | null>(null);
 	let mapInstance = $state<maplibreGl.Map | null>(null);
-	let circleCenter = $state(diameterMiles / 2);
+	let focusOnClick = $state(false);
 	const radiusGeoJSONSourceId = 'radius-circle-source'; // Renamed for clarity
 	const radiusFillLayerId = 'radius-circle-fill-layer';
 	const radiusOutlineLayerId = 'radius-circle-outline-layer';
@@ -37,7 +38,7 @@
 				// Check if click target is a marker element
 				const target = e.originalEvent.target as HTMLElement;
 				if (!target.closest('.maplibregl-marker')) {
-					circleCenter = [e.lngLat.lng, e.lngLat.lat];
+					m.circleCenter = [e.lngLat.lng, e.lngLat.lat];
 				}
 			});
 
@@ -54,6 +55,23 @@
 			mapInstance = null; // Clear the reactive state
 		};
 	});
+
+	async function focusOnCircle() {
+		if (!mapInstance || !m.circleCenter || radiusMiles <= 0) return;
+
+		const turf = await import('@turf/turf'); // Dynamically import turf
+		const centerPoint = turf.point(m.circleCenter);
+		const buffered = turf.buffer(centerPoint, radiusMiles, { units: 'miles' });
+		const bbox = turf.bbox(buffered);
+
+		mapInstance.fitBounds(
+			[bbox[0], bbox[1], bbox[2], bbox[3]], // [[minLng, minLat], [maxLng, maxLat]]
+			{
+				padding: 200, // Optional padding
+				duration: 1000 // Set duration to 500ms for faster animation
+			}
+		);
+	}
 
 	// --- Marker Management Effect ---
 	// This effect runs whenever mapInstance or m.users changes.
@@ -117,16 +135,24 @@
 			const newCenter: [number, number] = [centerCoordinates.lng, centerCoordinates.lat];
 			mapInstance.setCenter(newCenter);
 			// map.setZoom(12); // Optional: adjust zoom level after search
-			circleCenter = newCenter;
+			m.circleCenter = newCenter;
 			console.log('Map center updated from prop:', newCenter);
 		}
 	});
 
 	$effect(() => {
-		if (mapInstance && circleCenter) {
-			updateMapCenterAndRadius(circleCenter, radiusMiles); // radiusMiles is now derived
+		if (mapInstance && m.circleCenter) {
+			updateMapCenterAndRadius(m.circleCenter, radiusMiles); // radiusMiles is now derived
 		}
 	});
+
+	$inspect(m.circleCenter);
+
+	$effect(() => {
+		if(m.circleCenter && focusOnClick) {
+			focusOnCircle();
+		}
+	})
 
 	function getDistanceInMiles(lat1: number, lon1: number, lat2: number, lon2: number): number {
 		const R = 3959; // Radius of the Earth in miles
@@ -265,6 +291,33 @@
 </script>
 
 <div class="h-full w-full" bind:this={mapContainer}></div>
+<Button
+	onclick={focusOnCircle}
+	size="icon"
+	class="absolute bottom-4 left-4"
+	title="Focus on Circle"
+>
+	<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-focus"><circle cx="12" cy="12" r="3"/><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
+</Button>
+<Button
+	onclick={() => {focusOnClick = !focusOnClick}}
+	size="icon"
+	variant="secondary"
+	class="absolute bottom-4 left-16"
+	title="Toggle Focus on Click"
+>
+{#if focusOnClick}
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-target"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+{:else}
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-target">
+  <line x1="0" y1="0" x2="24" y2="24" stroke-width="2"/>
+  <circle cx="12" cy="12" r="10"/>
+  <circle cx="12" cy="12" r="6"/>
+  <circle cx="12" cy="12" r="2"/>
+</svg>
+{/if}
+
+</Button>
 
 <style>
 	/* Make default marker popups a bit more styled if needed */
