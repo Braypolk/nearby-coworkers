@@ -1,13 +1,13 @@
 import { SvelteKitAuth } from "@auth/sveltekit";
 import Entra from "@auth/sveltekit/providers/microsoft-entra-id"
-import { env } from "$env/dynamic/private"
+import { AUTH_MICROSOFT_ENTRA_ID_ID, AUTH_MICROSOFT_ENTRA_ID_SECRET, AUTH_MICROSOFT_ENTRA_ID_ISSUER } from "$env/static/private"
 
 export const { handle, signIn, signOut } = SvelteKitAuth({
     providers: [
       Entra({
-        clientId: env.AUTH_MICROSOFT_ENTRA_ID_ID,
-        clientSecret: env.AUTH_MICROSOFT_ENTRA_ID_SECRET,
-        issuer: env.AUTH_MICROSOFT_ENTRA_ID_ISSUER
+        clientId: AUTH_MICROSOFT_ENTRA_ID_ID,
+        clientSecret: AUTH_MICROSOFT_ENTRA_ID_SECRET,
+        issuer: AUTH_MICROSOFT_ENTRA_ID_ISSUER
       }),
     ],
     callbacks: {

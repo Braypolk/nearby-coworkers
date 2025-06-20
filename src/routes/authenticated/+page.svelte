@@ -10,7 +10,6 @@
 	import { signOut } from '@auth/sveltekit/client';
 	import Settings from '@lucide/svelte/icons/settings';
 	import { toggleMode } from 'mode-watcher';
-	import { env } from "$env/dynamic/private"
 
 	import { m } from '$lib/state.svelte';
 
@@ -27,21 +26,15 @@
 	let { data }: PageProps = $props();
 	m.users = data.post;
 
-	async function searchAddress() {
-		if (!addressQuery.trim()) {
-			alert('Please enter an address.');
-			return;
-		}
-		isSearchingAddress = true;
-		try {
-			const response = await fetch(
-				`https://api.radar.io/v1/search/autocomplete?query=${addressQuery}`,
-				{
-					headers: {
-						Authorization: env.RADAR_AUTH
-					}
-				}
-			);
+		async function searchAddress() {
+			if (!addressQuery.trim()) {
+				alert('Please enter an address.');
+				return;
+			}
+
+			isSearchingAddress = true;
+			try {
+				const response = await fetch(`/api/radar?address=${addressQuery}`);
 			if (!response.ok) {
 				throw new Error(`Geocoding failed: ${response.statusText}`);
 			}

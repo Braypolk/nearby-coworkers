@@ -14,27 +14,5 @@ export const load: PageServerLoad = async ({ locals }: { locals: App.Locals }) =
 	return {
 		post: (await redis.get("users")) as User[],
     session
-    // post: [
-    //   {
-    //     "id": 0,
-    //     "lastName": "Smith",
-    //     "firstName": "John",
-    //     "city": "Los Angeles",
-    //     "state": "CA",
-    //     "zipCode": 90290,
-    //     "lat": 34.093049,
-    //     "lng": -118.600033
-    //   },
-    //   {
-    //     "id": 1,
-    //     "lastName": "Blart",
-    //     "firstName": "Paul",
-    //     "city": "Los Angeles",
-    //     "state": "CA",
-    //     "zipCode": 90290,
-    //     "lat": 34.0931,
-    //     "lng": -117.901
-    //   }
-    // ]
 	};
 };
