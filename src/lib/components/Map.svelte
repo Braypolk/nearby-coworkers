@@ -5,28 +5,30 @@
 	import { m } from '$lib/state.svelte';
 	import { onMount, untrack } from 'svelte';
 	import Button from './ui/button/button.svelte';
+	import Input from '$lib/components/ui/input/input.svelte';
+	import Label from '$lib/components/ui/label/label.svelte';
+	import * as turf from '@turf/turf';
+	import type { FeatureCollection, Point, GeoJsonProperties } from 'geojson';
+	import Focus from "@lucide/svelte/icons/focus"
+	import Target from "@lucide/svelte/icons/target"
 
-	const { diameterMiles, onNearbyUsersUpdate = () => {}, centerCoordinates = null } = $props();
+	const { centerCoordinates = null } = $props();
+	let diameterMiles: number = $state(10);
 	let radiusMiles = $derived(diameterMiles / 2);
 
 	let mapContainer = $state<HTMLElement | null>(null);
-	let mapInstance = $state<maplibreGl.Map | null>(null);
-	let focusOnClick = $state(false);
-	const radiusGeoJSONSourceId = 'radius-circle-source'; // Renamed for clarity
-	const radiusFillLayerId = 'radius-circle-fill-layer';
-	const radiusOutlineLayerId = 'radius-circle-outline-layer';
-	let nearbyUsersList: User[] = [];
+	let mapInstance = $state<maplibreGl.Map | undefined>();
+	let focusOnClick = $state(true);
+	let points: FeatureCollection<Point, GeoJsonProperties>;
 
-	// let userMarkers: { user: User; marker: maplibreGl.Marker }[] = $state([]);
-
-	// onMount(() => {
 	onMount(() => {
 		if (mapContainer && !mapInstance) {
 			const map = new maplibreGl.Map({
-				container: mapContainer,
+				container: mapContainer as HTMLElement,
 				style: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
 				center: [centerCoordinates?.lng ?? -98.5795, centerCoordinates?.lat ?? 39.8283],
-				zoom: 3 // Adjusted zoom level for US view
+				zoom: 3, // Adjusted zoom level for US view
+				attributionControl: false
 			});
 
 			map.on('load', () => {
@@ -52,14 +54,13 @@
 				console.log('onMount cleanup: Removing map.');
 				mapInstance.remove();
 			}
-			mapInstance = null; // Clear the reactive state
+			mapInstance = undefined; // Clear the reactive state
 		};
 	});
 
 	async function focusOnCircle() {
-		if (!mapInstance || !m.circleCenter || radiusMiles <= 0) return;
+		if (!mapInstance || m.circleCenter.length == 0 || radiusMiles <= 0) return;
 
-		const turf = await import('@turf/turf'); // Dynamically import turf
 		const centerPoint = turf.point(m.circleCenter);
 		const buffered = turf.buffer(centerPoint, radiusMiles, { units: 'miles' });
 		const bbox = turf.bbox(buffered);
@@ -113,25 +114,29 @@
 		console.log(`Processing ${m.users.length} users to create new markers.`);
 		const newMarkerObjects: { user: User; marker: maplibreGl.Marker }[] = [];
 		m.users.forEach((userData) => {
-			const markerInstance = new maplibreGl.Marker()
+			const markerInstance = new maplibreGl.Marker({ color: 'hsl(var(--primary)/25%)' })
 				.setLngLat([userData.lng, userData.lat])
-				.addTo(mapInstance);
-
-			if (userData.name) {
-				const popup = new maplibreGl.Popup({ offset: 25 }).setText(userData.name);
-				markerInstance.setPopup(popup);
-			}
+				.addTo(mapInstance!);
+			markerInstance._element.id = 'marker-' + userData.id.toString();
+			const popup = new maplibreGl.Popup({ offset: 25 }).setText(
+				`${userData.firstName} ${userData.lastName}`
+			);
+			markerInstance.setPopup(popup);
 			newMarkerObjects.push({ user: userData, marker: markerInstance });
 		});
 
 		// Update the reactive state with the new marker objects
 		m.userMarkers = newMarkerObjects;
+		points = turf.featureCollection(
+			newMarkerObjects.map(({ user }) => turf.point([user.lng, user.lat], { user }))
+		);
 		console.log(`Updated m.userMarkers with ${newMarkerObjects.length} new markers.`);
 	});
 
-	// maybe has to do with search
+	// run on search
 	$effect(() => {
-		if (mapInstance && centerCoordinates && centerCoordinates.lat && centerCoordinates.lng) {
+		console.log('2');
+		if (mapInstance && centerCoordinates?.lat && centerCoordinates?.lng) {
 			const newCenter: [number, number] = [centerCoordinates.lng, centerCoordinates.lat];
 			mapInstance.setCenter(newCenter);
 			// map.setZoom(12); // Optional: adjust zoom level after search
@@ -141,183 +146,130 @@
 	});
 
 	$effect(() => {
-		if (mapInstance && m.circleCenter) {
-			updateMapCenterAndRadius(m.circleCenter, radiusMiles); // radiusMiles is now derived
-		}
+		if (!mapInstance || m.circleCenter.length == 0) return;
+		updateMapCenterAndRadius(m.circleCenter, radiusMiles); // radiusMiles is now derived
 	});
 
-	$inspect(m.circleCenter);
-
-	$effect(() => {
-		if(m.circleCenter && focusOnClick) {
-			focusOnCircle();
-		}
-	})
-
-	function getDistanceInMiles(lat1: number, lon1: number, lat2: number, lon2: number): number {
-		const R = 3959; // Radius of the Earth in miles
-		const dLat = deg2rad(lat2 - lat1);
-		const dLon = deg2rad(lon2 - lon1);
-		const a =
-			Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-			Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-		const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-		return R * c;
-	}
-
-	function deg2rad(deg: number): number {
-		return deg * (Math.PI / 180);
-	}
-
 	function updateMapCenterAndRadius(center: [number, number], currentRadiusMiles: number) {
-		if (!mapInstance || !mapInstance.isStyleLoaded()) {
-			console.warn('Map or style not loaded, skipping radius update.');
-			return;
-		}
-		if (currentRadiusMiles <= 0) {
-			console.warn('Radius (miles) is zero or negative, skipping radius drawing.');
-			// Optionally remove existing circle if radius becomes invalid
-			if (mapInstance.getLayer(radiusFillLayerId)) mapInstance.removeLayer(radiusFillLayerId);
-			if (mapInstance.getLayer(radiusOutlineLayerId)) mapInstance.removeLayer(radiusOutlineLayerId);
-			if (mapInstance.getSource(radiusGeoJSONSourceId))
-				mapInstance.removeSource(radiusGeoJSONSourceId);
-			return;
-		}
+		if (mapInstance !== undefined) {
+			const radiusGeoJSONSourceId = 'radius-circle-source';
+			const radiusFillLayerId = 'radius-circle-fill-layer';
+			const radiusOutlineLayerId = 'radius-circle-outline-layer';
 
-		// Pass radius in miles directly to createGeoJSONCircle
-		const circleGeoJSON = createGeoJSONCircle(center, currentRadiusMiles);
+			const circleGeoJSON = turf.circle(center, currentRadiusMiles, { units: 'miles' });
+			const source = mapInstance.getSource<maplibreGl.GeoJSONSource>(radiusGeoJSONSourceId);
 
-		if (
-			!circleGeoJSON ||
-			!circleGeoJSON.geometry ||
-			!circleGeoJSON.geometry.coordinates ||
-			circleGeoJSON.geometry.coordinates[0].length < 3
-		) {
-			console.error('Invalid Circle GeoJSON generated. Aborting radius draw.');
-			return;
-		}
-
-		const source = mapInstance.getSource(radiusGeoJSONSourceId) as maplibreGl.GeoJSONSource;
-		if (source) {
-			source.setData(circleGeoJSON);
-		} else {
-			mapInstance.addSource(radiusGeoJSONSourceId, {
-				type: 'geojson',
-				data: circleGeoJSON
-			});
-
-			mapInstance.addLayer({
-				id: radiusFillLayerId,
-				type: 'fill',
-				source: radiusGeoJSONSourceId,
-				paint: {
-					'fill-color': 'hsl(217.2 32.6% 17.5%)', // More visible fill
-					'fill-opacity': 0.3 // Or set opacity in rgba
-				}
-			});
-
-			mapInstance.addLayer({
-				id: radiusOutlineLayerId,
-				type: 'line',
-				source: radiusGeoJSONSourceId,
-				paint: {
-					// 'line-color': 'rgba(30, 41, 59, 0.7)', // Darker, more opaque red
-					'line-color': 'hsl(217.2 32.6% 17.5%)', // Darker, more opaque red
-					'line-width': 3 // Thicker line
-				}
-			});
-		}
-
-		nearbyUsersList = [];
-
-		m.userMarkers.forEach(({ user, marker }) => {
-			const distanceMiles = getDistanceInMiles(center[1], center[0], user.lat, user.lng);
-			const markerElement = marker.getElement();
-			const svgPath = markerElement.querySelector('svg path'); // Default MapLibre marker uses a path
-
-			if (distanceMiles <= currentRadiusMiles) {
-				if (svgPath) (svgPath as SVGPathElement).style.fill = 'hsl(var(--primary))';
-				nearbyUsersList.push(user);
+			// check if circle has been drawn already, if so update data, if not draw circle
+			if (source) {
+				source.setData(circleGeoJSON);
 			} else {
-				if (svgPath) (svgPath as SVGPathElement).style.fill = 'hsl(var(--primary)/25%)'; // Default color for built-in marker
+				mapInstance.addSource(radiusGeoJSONSourceId, {
+					type: 'geojson',
+					data: circleGeoJSON
+				});
+
+				mapInstance.addLayer({
+					id: radiusFillLayerId,
+					type: 'fill',
+					source: radiusGeoJSONSourceId,
+					paint: {
+						'fill-color': 'hsl(217.2 32.6% 17.5%)',
+						'fill-opacity': 0.3
+					}
+				});
+
+				mapInstance.addLayer({
+					id: radiusOutlineLayerId,
+					type: 'line',
+					source: radiusGeoJSONSourceId,
+					paint: {
+						'line-color': 'hsl(217.2 32.6% 17.5%)',
+						'line-width': 3
+					}
+				});
 			}
-		});
 
-		onNearbyUsersUpdate(nearbyUsersList, m.userMarkers);
-	}
+			// reset color of markers that were in the previous circle
+			// todo: figure out a better way than to loop through entire user, using m.nearbyusers is causing infinite effect call
+			m.users.forEach((user) => {
+				const svgPath: SVGAElement | null = m.userMarkers[user.id].marker
+					.getElement()
+					.querySelector('svg path');
+				if (svgPath) svgPath.style.fill = 'hsl(var(--primary)/25%)';
+			});
 
-	function createGeoJSONCircle(
-		center: [number, number],
-		radiusInMiles: number, // Changed parameter name
-		points: number = 64
-	): GeoJSON.Feature<GeoJSON.Polygon> {
-		if (radiusInMiles <= 0) {
-			console.warn('Radius for GeoJSON circle (in miles) is zero or negative.');
-			return {
-				// Return an empty polygon or handle as error
-				type: 'Feature',
-				geometry: { type: 'Polygon', coordinates: [[]] },
-				properties: {}
-			};
+			let nearbyUsers: User[] = [];
+			const pointsInCircle = turf.pointsWithinPolygon(points, circleGeoJSON);
+			pointsInCircle.features.forEach((feature) => {
+				nearbyUsers.push(feature.properties.user);
+				const svgPath: SVGAElement | null = m.userMarkers[feature.properties.user.id].marker
+					.getElement()
+					.querySelector('svg path');
+				if (svgPath) svgPath.style.fill = 'hsl(var(--primary))';
+			});
+
+			m.nearbyUsers = nearbyUsers;
+
+			if (focusOnClick) {
+				focusOnCircle();
+			}
 		}
-		const coords = {
-			latitude: center[1],
-			longitude: center[0]
-		};
-
-		const ret: [number, number][] = [];
-		const dLat = radiusInMiles / 68.703;
-		const dLon = radiusInMiles / (69.171 * Math.cos(deg2rad(coords.latitude)));
-
-		for (let i = 0; i < points; i++) {
-			const theta = (i / points) * (2 * Math.PI);
-			// x and y are degree offsets
-			const xOffset = dLon * Math.cos(theta);
-			const yOffset = dLat * Math.sin(theta);
-			ret.push([coords.longitude + xOffset, coords.latitude + yOffset]);
-		}
-		ret.push(ret[0]); // Close the polygon
-
-		const geojsonFeature: GeoJSON.Feature<GeoJSON.Polygon> = {
-			type: 'Feature',
-			geometry: {
-				type: 'Polygon',
-				coordinates: [ret] // GeoJSON Polygon coordinates are an array of rings
-			},
-			properties: {} // Add properties if needed
-		};
-		return geojsonFeature;
 	}
 </script>
 
+<!-- todo: have sidebar be a child of map component instead of main page, then I can pass props down instead of having to have global state -->
 <div class="h-full w-full" bind:this={mapContainer}></div>
+
 <Button
 	onclick={focusOnCircle}
 	size="icon"
 	class="absolute bottom-4 left-4"
 	title="Focus on Circle"
 >
-	<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-focus"><circle cx="12" cy="12" r="3"/><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
+	<Focus />
 </Button>
 <Button
-	onclick={() => {focusOnClick = !focusOnClick}}
+	onclick={() => {
+		focusOnClick = !focusOnClick;
+	}}
 	size="icon"
 	variant="secondary"
 	class="absolute bottom-4 left-16"
 	title="Toggle Focus on Click"
 >
-{#if focusOnClick}
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-target"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-{:else}
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-target">
-  <line x1="0" y1="0" x2="24" y2="24" stroke-width="2"/>
-  <circle cx="12" cy="12" r="10"/>
-  <circle cx="12" cy="12" r="6"/>
-  <circle cx="12" cy="12" r="2"/>
-</svg>
-{/if}
-
+	{#if focusOnClick}
+		<svg
+			xmlns="http://www.w3.org/2000/svg"
+			width="24"
+			height="24"
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			stroke-width="2"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+			class="lucide lucide-target"
+			><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle
+				cx="12"
+				cy="12"
+				r="2"
+			/></svg
+		>
+	{:else}
+		<Target />
+	{/if}
 </Button>
+
+<div class="absolute bottom-4 left-28 flex h-10 items-center gap-1 rounded-md bg-background px-2">
+	<Label for="diameter-input">Diameter (miles)</Label>
+	<Input
+		id="diameter-input"
+		type="number"
+		min={1}
+		bind:value={diameterMiles}
+		class="h-7 w-20 border-foreground/50 py-0"
+	/>
+</div>
 
 <style>
 	/* Make default marker popups a bit more styled if needed */

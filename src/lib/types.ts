@@ -1,7 +1,10 @@
 export interface User {
     id: number;
-    name: string;
-    address?: string;
+    firstName: string;
+    lastName: string;
+    state?: string;
+    city?: string;
+    zipCode?: number;
     lat: number;
     lng: number;
 }
