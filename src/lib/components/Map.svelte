@@ -9,8 +9,9 @@
 	import Label from '$lib/components/ui/label/label.svelte';
 	import * as turf from '@turf/turf';
 	import type { FeatureCollection, Point, GeoJsonProperties } from 'geojson';
-	import Focus from "@lucide/svelte/icons/focus"
-	import Target from "@lucide/svelte/icons/target"
+	import Focus from '@lucide/svelte/icons/focus';
+	import Target from '@lucide/svelte/icons/target';
+	import { cn } from '$lib/utils';
 
 	const { centerCoordinates = null } = $props();
 	let diameterMiles: number = $state(10);
@@ -21,6 +22,7 @@
 	let focusOnClick = $state(true);
 	let points: FeatureCollection<Point, GeoJsonProperties>;
 
+	// todo: implement different maps, something like this https://github.com/leoneljdias/maplibre-gl-style-flipper
 	onMount(() => {
 		if (mapContainer && !mapInstance) {
 			const map = new maplibreGl.Map({
@@ -234,10 +236,12 @@
 	}}
 	size="icon"
 	variant="secondary"
-	class="absolute bottom-4 left-16"
+	class={cn("absolute bottom-4 left-16", focusOnClick ? "bg-background" : "bg-secondary")}
 	title="Toggle Focus on Click"
 >
 	{#if focusOnClick}
+		<Target />
+	{:else}
 		<svg
 			xmlns="http://www.w3.org/2000/svg"
 			width="24"
@@ -249,14 +253,12 @@
 			stroke-linecap="round"
 			stroke-linejoin="round"
 			class="lucide lucide-target"
-			><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle
-				cx="12"
-				cy="12"
-				r="2"
-			/></svg
 		>
-	{:else}
-		<Target />
+			<line x1="0" y1="0" x2="24" y2="24" stroke-width="2" />
+			<circle cx="12" cy="12" r="10" />
+			<circle cx="12" cy="12" r="6" />
+			<circle cx="12" cy="12" r="2" />
+		</svg>
 	{/if}
 </Button>
 
