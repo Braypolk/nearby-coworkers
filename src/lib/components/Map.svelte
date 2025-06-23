@@ -12,8 +12,10 @@
 	import Focus from '@lucide/svelte/icons/focus';
 	import Target from '@lucide/svelte/icons/target';
 	import { cn } from '$lib/utils';
+	import { useSidebar } from '$lib/components/ui/sidebar/context.svelte';
 
 	const { centerCoordinates = null } = $props();
+	const sidebar = useSidebar();
 	let diameterMiles: number = $state(10);
 	let radiusMiles = $derived(diameterMiles / 2);
 
@@ -70,7 +72,7 @@
 		mapInstance.fitBounds(
 			[bbox[0], bbox[1], bbox[2], bbox[3]], // [[minLng, minLat], [maxLng, maxLat]]
 			{
-				padding: 200, // Optional padding
+				padding: sidebar.isMobile ? 40 : 200, // Optional padding
 				duration: 1000 // Set duration to 500ms for faster animation
 			}
 		);
@@ -194,9 +196,10 @@
 			// reset color of markers that were in the previous circle
 			// todo: figure out a better way than to loop through entire user, using m.nearbyusers is causing infinite effect call
 			m.users.forEach((user) => {
-				const svgPath: SVGAElement | null = m.userMarkers[user.id].marker
-					.getElement()
-					.querySelector('svg path');
+				const markerElement = m.userMarkers[user.id]?.marker?.getElement();
+				// todo: handle error
+				if (!markerElement) return;
+				const svgPath: SVGAElement | null = markerElement.querySelector('svg path');
 				if (svgPath) svgPath.style.fill = 'hsl(var(--primary)/25%)';
 			});
 
