@@ -122,8 +122,9 @@
 				.setLngLat([userData.lng, userData.lat])
 				.addTo(mapInstance!);
 			markerInstance._element.id = 'marker-' + userData.id.toString();
-			const popup = new maplibreGl.Popup({ offset: 25 }).setText(
-				`${userData.firstName} ${userData.lastName}`
+			const popup = new maplibreGl.Popup({ offset: 25 }).setHTML(
+				`<p class="text-base">${userData.firstName} ${userData.lastName}<p>
+				 <p class="text-xs text-gray-700">${userData.title}<p>`
 			);
 			markerInstance.setPopup(popup);
 			newMarkerObjects.push({ user: userData, marker: markerInstance });
