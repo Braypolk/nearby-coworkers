@@ -11,13 +11,21 @@
 	import type { FeatureCollection, Point, GeoJsonProperties } from 'geojson';
 	import Focus from '@lucide/svelte/icons/focus';
 	import Target from '@lucide/svelte/icons/target';
+	import Route from '@lucide/svelte/icons/route';
+	import Loader2 from '@lucide/svelte/icons/loader-2';
 	import { cn } from '$lib/utils';
 	import { useSidebar } from '$lib/components/ui/sidebar/context.svelte';
+	import { clearIsochrone, renderIsochrone, fetchIsochrone } from '$lib/map-utils';
 
 	const { centerCoordinates = null } = $props();
 	const sidebar = useSidebar();
 	let diameterMiles: number = $state(10);
 	let radiusMiles = $derived(diameterMiles / 2);
+	
+	// Isochrone state
+	let isCalculatingIsochrone = $state(false);
+	let isochroneMinutes = $state(15); // Default 15 minutes driving
+	let isIsochroneVisible = $state(false); // Track if isochrone is currently displayed
 
 	let mapContainer = $state<HTMLElement | null>(null);
 	let mapInstance = $state<maplibreGl.Map | undefined>();
@@ -37,16 +45,19 @@
 
 			map.on('load', () => {
 				mapInstance = map;
-				console.log('Map loaded and instance set.');
 			});
 
-			map!.on('click', (e: maplibreGl.MapMouseEvent & { lngLat: maplibreGl.LngLat }) => {
-				// Check if click target is a marker element
-				const target = e.originalEvent.target as HTMLElement;
-				if (!target.closest('.maplibregl-marker')) {
-					m.circleCenter = [e.lngLat.lng, e.lngLat.lat];
+		map!.on('click', (e: maplibreGl.MapMouseEvent & { lngLat: maplibreGl.LngLat }) => {
+			// Check if click target is a marker element
+			const target = e.originalEvent.target as HTMLElement;
+			if (!target.closest('.maplibregl-marker')) {
+				// Clear isochrone when clicking a new point
+				if (isIsochroneVisible && clearIsochrone(mapInstance)) {
+					isIsochroneVisible = false;
 				}
-			});
+				m.circleCenter = [e.lngLat.lng, e.lngLat.lat];
+			}
+		});
 
 			map.on('error', (e) => {
 				console.error('MapLibre error:', e);
@@ -55,10 +66,9 @@
 		// Cleanup function, runs when the component is destroyed
 		return () => {
 			if (mapInstance) {
-				console.log('onMount cleanup: Removing map.');
 				mapInstance.remove();
 			}
-			mapInstance = undefined; // Clear the reactive state
+			mapInstance = undefined;
 		};
 	});
 
@@ -80,44 +90,28 @@
 		);
 	}
 
-	// --- Marker Management Effect ---
-	// This effect runs whenever mapInstance or m.users changes.
+	// Marker Management Effect - runs whenever mapInstance or m.users changes
 	$effect(() => {
-		console.log(
-			'Marker effect triggered. mapInstance:',
-			!!mapInstance,
-			'm.users:',
-			m.users ? m.users.length : 'null'
-		);
-
-		// Get current markers in an untracked way for cleanup
 		const currentMarkers = untrack(() => m.userMarkers);
 
-		// 1. Clean up existing markers from the map
+		// Clean up existing markers from the map
 		if (mapInstance && currentMarkers && Object.keys(currentMarkers).length > 0) {
-			console.log(`Removing ${Object.keys(currentMarkers).length} old markers.`);
 			Object.values(currentMarkers).forEach(({ marker }) => {
-				// Robust check for marker removal
 				if (marker && typeof marker.remove === 'function') {
 					marker.remove();
 				}
 			});
 		}
 
-		// 2. Decide whether to add new markers or clear the store
+		// If map not ready or no user data, clear markers store
 		if (!mapInstance || !m.users || m.users.length === 0) {
-			// If map not ready, or no user data, ensure markers store is empty.
-			// Check reactive store directly before writing to avoid unnecessary updates if already empty.
 			if (Object.keys(untrack(() => m.userMarkers)).length > 0) {
-				console.log('Map not ready or no user data. Clearing m.userMarkers.');
 				m.userMarkers = {};
 			}
 			return;
 		}
 
-		// 3. Add new markers based on m.users
-		// mapInstance and m.users (with m.users.length > 0) are guaranteed to be valid here.
-		console.log(`Processing ${m.users.length} users to create new markers.`);
+		// Add new markers based on m.users
 		const newMarkerObjects: Record<number, { user: User; marker: maplibreGl.Marker }> = {};
 		m.users.forEach((userData) => {
 			const markerInstance = new maplibreGl.Marker({ color: 'hsl(var(--primary)/25%)' })
@@ -129,27 +123,24 @@
 				 <p class="text-xs text-gray-700">${userData.title}<p>`
 			);
 			markerInstance.setPopup(popup);
-			// Key by user.id for O(1) lookup
 			newMarkerObjects[userData.id] = { user: userData, marker: markerInstance };
 		});
 
-		// Update the reactive state with the new marker objects
 		m.userMarkers = newMarkerObjects;
 		points = turf.featureCollection(
 			Object.values(newMarkerObjects).map(({ user }) => turf.point([user.lng, user.lat], { user }))
 		);
-		console.log(`Updated m.userMarkers with ${Object.keys(newMarkerObjects).length} new markers.`);
 	});
 
-	// run on search
+	// Update map center when search coordinates change
 	$effect(() => {
-		console.log('2');
 		if (mapInstance && centerCoordinates?.lat && centerCoordinates?.lng) {
 			const newCenter: [number, number] = [centerCoordinates.lng, centerCoordinates.lat];
 			mapInstance.setCenter(newCenter);
-			// map.setZoom(12); // Optional: adjust zoom level after search
+			if (isIsochroneVisible && clearIsochrone(mapInstance)) {
+				isIsochroneVisible = false;
+			}
 			m.circleCenter = newCenter;
-			console.log('Map center updated from prop:', newCenter);
 		}
 	});
 
@@ -157,6 +148,62 @@
 		if (!mapInstance || m.circleCenter.length == 0) return;
 		updateMapCenterAndRadius(m.circleCenter, radiusMiles); // radiusMiles is now derived
 	});
+
+	async function calculateIsochroneHandler() {
+		if (!mapInstance || m.circleCenter.length === 0) return;
+		
+		isCalculatingIsochrone = true;
+		try {
+			const data = await fetchIsochrone(m.circleCenter as [number, number], isochroneMinutes);
+			renderIsochrone(mapInstance, data, { padding: sidebar.isMobile ? 40 : 200, duration: 1000 });
+			isIsochroneVisible = true;
+			
+			// Update nearby users based on isochrone polygon
+			if (data.features && data.features.length > 0) {
+				updateNearbyUsers(data.features[0] as GeoJSON.Feature<GeoJSON.Polygon>);
+			}
+		} catch (error) {
+			console.error('Isochrone calculation error:', error);
+		} finally {
+			isCalculatingIsochrone = false;
+		}
+	}
+	
+	/** Update nearby users and marker colors based on a polygon */
+	function updateNearbyUsers(polygon: GeoJSON.Feature<GeoJSON.Polygon>) {
+		const pointsInPolygon = turf.pointsWithinPolygon(points, polygon);
+		const newNearbyUsers: User[] = pointsInPolygon.features
+			.filter((feature) => feature.properties?.user)
+			.map((feature) => feature.properties!.user);
+		const newNearbyIds = new Set(newNearbyUsers.map((u) => u.id));
+
+		// Reset colors for users that were previously nearby but aren't anymore
+		const previousNearbyUsers = untrack(() => m.nearbyUsers);
+		previousNearbyUsers.forEach((user) => {
+			if (!newNearbyIds.has(user.id)) {
+				const markerData = m.userMarkers[user.id];
+				if (markerData) {
+					const svgPath: SVGAElement | null = markerData.marker
+						.getElement()
+						.querySelector('svg path');
+					if (svgPath) svgPath.style.fill = 'hsl(var(--primary)/25%)';
+				}
+			}
+		});
+
+		// Highlight markers that are now in the polygon
+		newNearbyUsers.forEach((user) => {
+			const markerData = m.userMarkers[user.id];
+			if (markerData) {
+				const svgPath: SVGAElement | null = markerData.marker
+					.getElement()
+					.querySelector('svg path');
+				if (svgPath) svgPath.style.fill = 'hsl(var(--primary))';
+			}
+		});
+
+		m.nearbyUsers = newNearbyUsers;
+	}
 
 	function updateMapCenterAndRadius(center: [number, number], currentRadiusMiles: number) {
 		if (mapInstance !== undefined) {
@@ -197,41 +244,8 @@
 				});
 			}
 
-      
-			// Calculate new nearby users first
-			const pointsInCircle = turf.pointsWithinPolygon(points, circleGeoJSON);
-			const newNearbyUsers: User[] = pointsInCircle.features
-				.filter((feature) => feature.properties?.user)
-				.map((feature) => feature.properties!.user);
-			const newNearbyIds = new Set(newNearbyUsers.map((u) => u.id));
-
-			// Only reset colors for users that were previously nearby but aren't anymore
-			// Use untrack to read current nearbyUsers without triggering effect dependency
-			const previousNearbyUsers = untrack(() => m.nearbyUsers);
-			previousNearbyUsers.forEach((user) => {
-				if (!newNearbyIds.has(user.id)) {
-					const markerData = m.userMarkers[user.id];
-					if (markerData) {
-						const svgPath: SVGAElement | null = markerData.marker
-							.getElement()
-							.querySelector('svg path');
-						if (svgPath) svgPath.style.fill = 'hsl(var(--primary)/25%)';
-					}
-				}
-			});
-
-			// Highlight markers that are now in the circle
-			newNearbyUsers.forEach((user) => {
-				const markerData = m.userMarkers[user.id];
-				if (markerData) {
-					const svgPath: SVGAElement | null = markerData.marker
-						.getElement()
-						.querySelector('svg path');
-					if (svgPath) svgPath.style.fill = 'hsl(var(--primary))';
-				}
-			});
-
-			m.nearbyUsers = newNearbyUsers;
+			// Update nearby users based on circle
+			updateNearbyUsers(circleGeoJSON);
 
 			if (focusOnClick) {
 				focusOnCircle();
@@ -292,6 +306,34 @@
 		bind:value={diameterMiles}
 		class="h-7 w-20 border-foreground/50 py-0"
 	/>
+</div>
+
+<!-- Isochrone Controls - Bottom Right -->
+<div class="absolute bottom-4 right-4 flex items-center gap-2">
+	<div class="flex h-10 items-center gap-1 rounded-md bg-background px-2">
+		<Label for="isochrone-input" class="text-sm whitespace-nowrap">Travel time (min)</Label>
+		<Input
+			id="isochrone-input"
+			type="number"
+			min={5}
+			max={60}
+			bind:value={isochroneMinutes}
+			class="h-7 w-16 border-foreground/50 py-0"
+		/>
+	</div>
+	<Button
+		onclick={calculateIsochroneHandler}
+		size="icon"
+		disabled={isCalculatingIsochrone || m.circleCenter.length === 0}
+		title="Calculate Isochrone"
+		class="bg-emerald-600 hover:bg-emerald-700"
+	>
+		{#if isCalculatingIsochrone}
+			<Loader2 class="animate-spin" />
+		{:else}
+			<Route />
+		{/if}
+	</Button>
 </div>
 
 <style>

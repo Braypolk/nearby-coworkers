@@ -67,7 +67,7 @@
 					aria-label="Toggle emp-rad"
 					class="grow data-[state=on]:bg-primary/40"
 				>
-					Employees in Circle ({m.nearbyUsers.length})
+					Employees in Range ({m.nearbyUsers.length})
 				</ToggleGroup.Item>
 				<ToggleGroup.Item
 					value="emp-all"
