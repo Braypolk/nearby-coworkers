@@ -12,17 +12,13 @@
 	let currentTab = $state('emp-all');
 	let searchTerm = $state('');
 
-	// TODO: change how id's are assign and popups are accessed, currently, id is just the arrary position, not a good way to do this
-	function handlePersonClick(id: number) {
-		// todo: fix: slow, gross way to do this
-		m.userMarkers.forEach((marker) => {
-			if (marker.marker.getPopup().isOpen() && marker.user.id !== id) {
-				marker.marker.togglePopup();
-			}
-		});
-		m.userMarkers[id].marker.togglePopup();
-		// TODO: can this be reworked so I don't have to have circleCenter be stored as shared state?
-		m.circleCenter = m.userMarkers[id].marker.getLngLat().toArray();
+	// userMarkers is now a Record<number, ...> keyed by user.id, so lookup is O(1) by ID
+	function handlePersonClick(userId: number) {
+		const markerData = m.userMarkers[userId];
+		if (markerData) {
+			// TODO: can this be reworked so I don't have to have circleCenter be stored as shared state?
+			m.circleCenter = markerData.marker.getLngLat().toArray();
+		}
 	}
 
 	const filteredAllUsers = $derived(

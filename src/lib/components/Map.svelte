@@ -90,9 +90,9 @@
 		const currentMarkers = untrack(() => m.userMarkers);
 
 		// 1. Clean up existing markers from the map
-		if (mapInstance && currentMarkers && currentMarkers.length > 0) {
-			console.log(`Removing ${currentMarkers.length} old markers.`);
-			currentMarkers.forEach(({ marker }) => {
+		if (mapInstance && currentMarkers && Object.keys(currentMarkers).length > 0) {
+			console.log(`Removing ${Object.keys(currentMarkers).length} old markers.`);
+			Object.values(currentMarkers).forEach(({ marker }) => {
 				// Robust check for marker removal
 				if (marker && typeof marker.remove === 'function') {
 					marker.remove();
@@ -104,9 +104,9 @@
 		if (!mapInstance || !m.users || m.users.length === 0) {
 			// If map not ready, or no user data, ensure markers store is empty.
 			// Check reactive store directly before writing to avoid unnecessary updates if already empty.
-			if (untrack(() => m.userMarkers).length > 0) {
+			if (Object.keys(untrack(() => m.userMarkers)).length > 0) {
 				console.log('Map not ready or no user data. Clearing m.userMarkers.');
-				m.userMarkers = [];
+				m.userMarkers = {};
 			}
 			return;
 		}
@@ -114,7 +114,7 @@
 		// 3. Add new markers based on m.users
 		// mapInstance and m.users (with m.users.length > 0) are guaranteed to be valid here.
 		console.log(`Processing ${m.users.length} users to create new markers.`);
-		const newMarkerObjects: { user: User; marker: maplibreGl.Marker }[] = [];
+		const newMarkerObjects: Record<number, { user: User; marker: maplibreGl.Marker }> = {};
 		m.users.forEach((userData) => {
 			const markerInstance = new maplibreGl.Marker({ color: 'hsl(var(--primary)/25%)' })
 				.setLngLat([userData.lng, userData.lat])
@@ -124,15 +124,16 @@
 				`${userData.firstName} ${userData.lastName}`
 			);
 			markerInstance.setPopup(popup);
-			newMarkerObjects.push({ user: userData, marker: markerInstance });
+			// Key by user.id for O(1) lookup
+			newMarkerObjects[userData.id] = { user: userData, marker: markerInstance };
 		});
 
 		// Update the reactive state with the new marker objects
 		m.userMarkers = newMarkerObjects;
 		points = turf.featureCollection(
-			newMarkerObjects.map(({ user }) => turf.point([user.lng, user.lat], { user }))
+			Object.values(newMarkerObjects).map(({ user }) => turf.point([user.lng, user.lat], { user }))
 		);
-		console.log(`Updated m.userMarkers with ${newMarkerObjects.length} new markers.`);
+		console.log(`Updated m.userMarkers with ${Object.keys(newMarkerObjects).length} new markers.`);
 	});
 
 	// run on search
@@ -191,26 +192,40 @@
 				});
 			}
 
-			// reset color of markers that were in the previous circle
-			// todo: figure out a better way than to loop through entire user, using m.nearbyusers is causing infinite effect call
-			m.users.forEach((user) => {
-				const svgPath: SVGAElement | null = m.userMarkers[user.id].marker
-					.getElement()
-					.querySelector('svg path');
-				if (svgPath) svgPath.style.fill = 'hsl(var(--primary)/25%)';
-			});
-
-			let nearbyUsers: User[] = [];
+			// Calculate new nearby users first
 			const pointsInCircle = turf.pointsWithinPolygon(points, circleGeoJSON);
-			pointsInCircle.features.forEach((feature) => {
-				nearbyUsers.push(feature.properties.user);
-				const svgPath: SVGAElement | null = m.userMarkers[feature.properties.user.id].marker
-					.getElement()
-					.querySelector('svg path');
-				if (svgPath) svgPath.style.fill = 'hsl(var(--primary))';
+			const newNearbyUsers: User[] = pointsInCircle.features
+				.filter((feature) => feature.properties?.user)
+				.map((feature) => feature.properties!.user);
+			const newNearbyIds = new Set(newNearbyUsers.map((u) => u.id));
+
+			// Only reset colors for users that were previously nearby but aren't anymore
+			// Use untrack to read current nearbyUsers without triggering effect dependency
+			const previousNearbyUsers = untrack(() => m.nearbyUsers);
+			previousNearbyUsers.forEach((user) => {
+				if (!newNearbyIds.has(user.id)) {
+					const markerData = m.userMarkers[user.id];
+					if (markerData) {
+						const svgPath: SVGAElement | null = markerData.marker
+							.getElement()
+							.querySelector('svg path');
+						if (svgPath) svgPath.style.fill = 'hsl(var(--primary)/25%)';
+					}
+				}
 			});
 
-			m.nearbyUsers = nearbyUsers;
+			// Highlight markers that are now in the circle
+			newNearbyUsers.forEach((user) => {
+				const markerData = m.userMarkers[user.id];
+				if (markerData) {
+					const svgPath: SVGAElement | null = markerData.marker
+						.getElement()
+						.querySelector('svg path');
+					if (svgPath) svgPath.style.fill = 'hsl(var(--primary))';
+				}
+			});
+
+			m.nearbyUsers = newNearbyUsers;
 
 			if (focusOnClick) {
 				focusOnCircle();
