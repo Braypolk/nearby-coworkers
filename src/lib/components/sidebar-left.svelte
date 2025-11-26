@@ -45,11 +45,12 @@
 		<Sidebar.MenuItem>
 			<Button
 				variant="ghost"
-				class="h-16 w-full justify-normal"
+				class="h-20 w-full justify-normal"
 				onclick={() => handlePersonClick(item.id)}
 			>
 				<div class="text-left">
 					<p class="text-lg">{item.firstName} {item.lastName}</p>
+					<p class="text-sm text-foreground/70 font-bold">{item.title}</p>
 					<p class="text-xs text-foreground/70">{item.city}, {item.state}, {item.zipCode}</p>
 				</div>
 			</Button>

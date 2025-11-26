@@ -12,8 +12,10 @@
 	import Focus from '@lucide/svelte/icons/focus';
 	import Target from '@lucide/svelte/icons/target';
 	import { cn } from '$lib/utils';
+	import { useSidebar } from '$lib/components/ui/sidebar/context.svelte';
 
 	const { centerCoordinates = null } = $props();
+	const sidebar = useSidebar();
 	let diameterMiles: number = $state(10);
 	let radiusMiles = $derived(diameterMiles / 2);
 
@@ -72,7 +74,7 @@
 		mapInstance.fitBounds(
 			[bbox[0], bbox[1], bbox[2], bbox[3]], // [[minLng, minLat], [maxLng, maxLat]]
 			{
-				padding: 200, // Optional padding
+				padding: sidebar.isMobile ? 40 : 200, // Optional padding
 				duration: 1000 // Set duration to 500ms for faster animation
 			}
 		);
@@ -122,8 +124,9 @@
 				.setLngLat([userData.lng, userData.lat])
 				.addTo(mapInstance!);
 			markerInstance._element.id = 'marker-' + userData.id.toString();
-			const popup = new maplibreGl.Popup({ offset: 25 }).setText(
-				`${userData.firstName} ${userData.lastName}`
+			const popup = new maplibreGl.Popup({ offset: 25 }).setHTML(
+				`<p class="text-base">${userData.firstName} ${userData.lastName}<p>
+				 <p class="text-xs text-gray-700">${userData.title}<p>`
 			);
 			markerInstance.setPopup(popup);
 			// Key by user.id for O(1) lookup
@@ -194,6 +197,7 @@
 				});
 			}
 
+      
 			// Calculate new nearby users first
 			const pointsInCircle = turf.pointsWithinPolygon(points, circleGeoJSON);
 			const newNearbyUsers: User[] = pointsInCircle.features
