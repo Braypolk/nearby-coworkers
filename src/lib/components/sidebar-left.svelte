@@ -12,34 +12,32 @@
 	let currentTab = $state('emp-all');
 	let searchTerm = $state('');
 
-	// TODO: change how id's are assign and popups are accessed, currently, id is just the arrary position, not a good way to do this
-	function handlePersonClick(id: number) {
-		// todo: fix: slow, gross way to do this
-		m.userMarkers.forEach((marker) => {
-			if (marker.marker.getPopup().isOpen() && marker.user.id !== id) {
-				marker.marker.togglePopup();
-			}
-		});
-		m.userMarkers[id].marker.togglePopup();
-		// TODO: can this be reworked so I don't have to have circleCenter be stored as shared state?
-		m.circleCenter = m.userMarkers[id].marker.getLngLat().toArray();
+	// userMarkers is now a Record<number, ...> keyed by user.id, so lookup is O(1) by ID
+	function handlePersonClick(userId: number) {
+		const markerData = m.userMarkers[userId];
+		if (markerData) {
+			// TODO: can this be reworked so I don't have to have circleCenter be stored as shared state?
+			m.circleCenter = markerData.marker.getLngLat().toArray();
+		}
 	}
 
-	const filteredAllUsers = $derived(
-		m.users.filter(
-			(user) =>
-				user.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-				user.firstName.toLowerCase().includes(searchTerm.toLowerCase())
-		)
-	);
+	// Cache lowercased search term to avoid calling toLowerCase() for every user
+	const searchTermLower = $derived(searchTerm.toLowerCase());
 
-	const filteredNearbyUsers = $derived(
-		m.nearbyUsers.filter(
-			(user) =>
-				user.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-				user.firstName.toLowerCase().includes(searchTerm.toLowerCase())
-		)
-	);
+	// Helper function to check if a user matches the search term
+	function userMatchesSearch(user: User): boolean {
+		if (!searchTermLower) return true;
+		return (
+			user.lastName.toLowerCase().includes(searchTermLower) ||
+			user.firstName.toLowerCase().includes(searchTermLower)
+		);
+	}
+
+	// Only compute the filter for the currently active tab
+	const filteredUsers = $derived.by(() => {
+		const sourceList = currentTab === 'emp-rad' ? m.nearbyUsers : m.users;
+		return sourceList.filter(userMatchesSearch);
+	});
 </script>
 
 {#snippet menuButton(u: User[])}
@@ -69,7 +67,7 @@
 					aria-label="Toggle emp-rad"
 					class="grow data-[state=on]:bg-primary/40"
 				>
-					Employees in Circle ({filteredNearbyUsers.length})
+					Employees in Circle ({m.nearbyUsers.length})
 				</ToggleGroup.Item>
 				<ToggleGroup.Item
 					value="emp-all"
@@ -92,19 +90,12 @@
 			/>
 		</div>
 		<Sidebar.Group class="group-data-[collapsible=icon]:hidden">
-			{#if currentTab === 'emp-rad'}
-				<Sidebar.GroupLabel
-					>Employees within Circle: ({filteredNearbyUsers.length})</Sidebar.GroupLabel
-				>
-				<Sidebar.Menu>
-					{@render menuButton(filteredNearbyUsers)}
-				</Sidebar.Menu>
-			{:else}
-				<Sidebar.GroupLabel>Number of Employees: ({filteredAllUsers.length})</Sidebar.GroupLabel>
-				<Sidebar.Menu>
-					{@render menuButton(filteredAllUsers)}
-				</Sidebar.Menu>
-			{/if}
+			<Sidebar.GroupLabel>
+				{currentTab === 'emp-rad' ? 'Employees within Circle' : 'Number of Employees'}: ({filteredUsers.length})
+			</Sidebar.GroupLabel>
+			<Sidebar.Menu>
+				{@render menuButton(filteredUsers)}
+			</Sidebar.Menu>
 		</Sidebar.Group>
 	</Sidebar.Content>
 	<Sidebar.Rail />

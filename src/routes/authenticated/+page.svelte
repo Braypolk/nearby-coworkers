@@ -32,9 +32,9 @@
 				return;
 			}
 
-			isSearchingAddress = true;
-			try {
-				const response = await fetch(`/api/radar?address=${addressQuery}`);
+		isSearchingAddress = true;
+		try {
+			const response = await fetch(`/authenticated/api/radar?address=${encodeURIComponent(addressQuery)}`);
 			if (!response.ok) {
 				throw new Error(`Geocoding failed: ${response.statusText}`);
 			}
