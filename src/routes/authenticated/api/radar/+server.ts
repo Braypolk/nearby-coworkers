@@ -10,7 +10,7 @@ export const GET: RequestHandler = async ({ url }) => {
 
     try {
         const response = await fetch(
-            `https://api.radar.io/v1/search/autocomplete?query=${address}`,
+            `https://api.radar.io/v1/search/autocomplete?query=${encodeURIComponent(address)}`,
             {
                 headers: {
                     Authorization: RADAR_AUTH

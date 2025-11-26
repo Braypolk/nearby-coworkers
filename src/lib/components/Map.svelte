@@ -65,6 +65,8 @@
 
 		const centerPoint = turf.point(m.circleCenter);
 		const buffered = turf.buffer(centerPoint, radiusMiles, { units: 'miles' });
+		if (!buffered) return;
+
 		const bbox = turf.bbox(buffered);
 
 		mapInstance.fitBounds(
