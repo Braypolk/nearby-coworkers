@@ -5,7 +5,12 @@ export interface User {
     title: string;
     state?: string;
     city?: string;
-    zipCode?: number;
+    zipCode?: number | string;
     lat: number;
     lng: number;
+    /** LP Status from data */
+    lp_status?: string;
+    lpStatus?: string;
+    /** Spreadsheet-style column name in JSON */
+    'LP Status'?: string;
 }

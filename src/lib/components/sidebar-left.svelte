@@ -6,6 +6,7 @@
 	import * as ToggleGroup from '$lib/components/ui/toggle-group/index.js';
 	import { m } from '$lib/state.svelte';
 	import type { User } from '$lib/types';
+	import { userPassesLpCurrentTierFilter } from '$lib/lp-status-filter';
 
 	let { ref = $bindable(null), ...restProps }: ComponentProps<typeof Sidebar.Root> = $props();
 
@@ -35,13 +36,16 @@
 
 	// Only compute the filter for the currently active tab
 	const filteredUsers = $derived.by(() => {
+		const filterLp = m.filterLpCurrentTier;
 		const sourceList = currentTab === 'emp-rad' ? m.nearbyUsers : m.users;
-		return sourceList.filter(userMatchesSearch);
+		return sourceList
+			.filter((u) => userPassesLpCurrentTierFilter(u, filterLp))
+			.filter(userMatchesSearch);
 	});
 </script>
 
 {#snippet menuButton(u: User[])}
-	{#each u as item}
+	{#each u as item (item.id)}
 		<Sidebar.MenuItem>
 			<Button
 				variant="ghost"
@@ -81,13 +85,21 @@
 	</Sidebar.Header>
 	<Sidebar.Separator class="bg-primary/60" />
 	<Sidebar.Content>
-		<div class="mt-2 px-4">
+		<div class="mt-2 space-y-3 px-4">
 			<Input
 				type="search"
 				placeholder="Search employees..."
 				bind:value={searchTerm}
 				class="w-full"
 			/>
+			<label class="flex cursor-pointer items-start gap-2 text-sm leading-snug">
+				<input
+					type="checkbox"
+					class="border-input text-primary focus-visible:ring-ring mt-0.5 size-4 shrink-0 rounded border shadow focus-visible:ring-1 focus-visible:outline-none"
+					bind:checked={m.filterLpCurrentTier}
+				/>
+				<span>Currently Enrolled in LP Program</span>
+			</label>
 		</div>
 		<Sidebar.Group class="group-data-[collapsible=icon]:hidden">
 			<Sidebar.GroupLabel>

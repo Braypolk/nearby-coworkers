@@ -16,6 +16,7 @@
 	import { cn } from '$lib/utils';
 	import { useSidebar } from '$lib/components/ui/sidebar/context.svelte';
 	import { clearIsochrone, renderIsochrone, fetchIsochrone } from '$lib/map-utils';
+	import { userPassesLpCurrentTierFilter } from '$lib/lp-status-filter';
 
 	const { centerCoordinates = null } = $props();
 	const sidebar = useSidebar();
@@ -90,8 +91,9 @@
 		);
 	}
 
-	// Marker Management Effect - runs whenever mapInstance or m.users changes
+	// Marker Management Effect - runs whenever mapInstance, m.users, or LP filter changes
 	$effect(() => {
+		const filterLp = m.filterLpCurrentTier;
 		const currentMarkers = untrack(() => m.userMarkers);
 
 		// Clean up existing markers from the map
@@ -111,9 +113,11 @@
 			return;
 		}
 
-		// Add new markers based on m.users
+		const usersOnMap = m.users.filter((u) => userPassesLpCurrentTierFilter(u, filterLp));
+
+		// Add new markers based on visible users
 		const newMarkerObjects: Record<number, { user: User; marker: maplibreGl.Marker }> = {};
-		m.users.forEach((userData) => {
+		usersOnMap.forEach((userData) => {
 			const markerInstance = new maplibreGl.Marker({ color: 'hsl(var(--primary)/25%)' })
 				.setLngLat([userData.lng, userData.lat])
 				.addTo(mapInstance!);
@@ -146,6 +150,7 @@
 
 	$effect(() => {
 		if (!mapInstance || m.circleCenter.length == 0) return;
+		m.filterLpCurrentTier; // re-run range / nearby when LP filter toggles (after markers refresh points)
 		updateMapCenterAndRadius(m.circleCenter, radiusMiles); // radiusMiles is now derived
 	});
 
