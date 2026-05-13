@@ -13,6 +13,7 @@
 	import Target from '@lucide/svelte/icons/target';
 	import { cn } from '$lib/utils';
 	import { useSidebar } from '$lib/components/ui/sidebar/context.svelte';
+	import { userPassesLpCurrentTierFilter } from '$lib/lp-status-filter';
 
 	const { centerCoordinates = null } = $props();
 	const sidebar = useSidebar();
@@ -80,8 +81,7 @@
 		);
 	}
 
-	// --- Marker Management Effect ---
-	// This effect runs whenever mapInstance or m.users changes.
+	// Marker Management Effect - runs whenever mapInstance, m.users, or LP filter changes
 	$effect(() => {
 		console.log(
 			'Marker effect triggered. mapInstance:',
@@ -90,7 +90,7 @@
 			m.users ? m.users.length : 'null'
 		);
 
-		// Get current markers in an untracked way for cleanup
+		const filterLp = m.filterLpCurrentTier;
 		const currentMarkers = untrack(() => m.userMarkers);
 
 		// 1. Clean up existing markers from the map
@@ -115,11 +115,11 @@
 			return;
 		}
 
-		// 3. Add new markers based on m.users
-		// mapInstance and m.users (with m.users.length > 0) are guaranteed to be valid here.
-		console.log(`Processing ${m.users.length} users to create new markers.`);
+		const usersOnMap = m.users.filter((u) => userPassesLpCurrentTierFilter(u, filterLp));
+
+		console.log(`Processing ${usersOnMap.length} users to create new markers.`);
 		const newMarkerObjects: Record<number, { user: User; marker: maplibreGl.Marker }> = {};
-		m.users.forEach((userData) => {
+		usersOnMap.forEach((userData) => {
 			const markerInstance = new maplibreGl.Marker({ color: 'hsl(var(--primary)/25%)' })
 				.setLngLat([userData.lng, userData.lat])
 				.addTo(mapInstance!);
@@ -155,6 +155,7 @@
 
 	$effect(() => {
 		if (!mapInstance || m.circleCenter.length == 0) return;
+		m.filterLpCurrentTier; // re-run range / nearby when LP filter toggles (after markers refresh points)
 		updateMapCenterAndRadius(m.circleCenter, radiusMiles); // radiusMiles is now derived
 	});
 
